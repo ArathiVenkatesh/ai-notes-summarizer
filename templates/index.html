@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NotesMind — AI Summarizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1c1c28;
+      --border: rgba(255,255,255,0.07);
+      --accent: #c8a96e;
+      --accent2: #7c6ef0;
+      --accent3: #4ecdc4;
+      --text: #f0ede8;
+      --text-muted: #7a7880;
+      --glow: rgba(200,169,110,0.15);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: 
+        radial-gradient(ellipse at 20% 20%, rgba(124,110,240,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(200,169,110,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(78,205,196,0.04) 0%, transparent 60%);
+      animation: bgShift 12s ease-in-out infinite alternate;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    @keyframes bgShift {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(2%, 2%) rotate(1deg); }
+    }
+
+    /* Grain overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.4;
+    }
+
+    .wrapper {
+      position: relative;
+      z-index: 2;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px 24px 80px;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 64px;
+      animation: fadeDown 0.8s ease both;
+    }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+
+
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.4rem, 5vw, 3.8rem);
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #f0ede8 0%, var(--accent) 50%, #f0ede8 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 4s linear infinite;
+    }
+
+    @keyframes shimmer {
+      to { background-position: 200% center; }
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      font-weight: 300;
+      max-width: 480px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* Main card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+      margin-bottom: 24px;
+      animation: fadeUp 0.8s ease 0.2s both;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.5;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    textarea {
+      width: 100%;
+      height: 220px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 300;
+      line-height: 1.7;
+      resize: vertical;
+      transition: border-color 0.3s, box-shadow 0.3s;
+      outline: none;
+    }
+
+    textarea::placeholder { color: var(--text-muted); }
+
+    textarea:focus {
+      border-color: rgba(200,169,110,0.4);
+      box-shadow: 0 0 0 4px var(--glow);
+    }
+
+    /* Character counter */
+    .char-counter {
+      text-align: right;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn-primary {
+      flex: 1;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, var(--accent) 0%, #e8c282 100%);
+      color: #0a0a0f;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .btn-primary:hover::after { opacity: 1; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(200,169,110,0.3); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-secondary {
+      padding: 16px 20px;
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      border-color: rgba(255,255,255,0.15);
+      color: var(--text);
+    }
+
+    /* Loading */
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 48px 24px;
+    }
+
+    .loading-orb {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 20px;
+      position: relative;
+    }
+
+    .loading-orb::before,
+    .loading-orb::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+    }
+
+    .loading-orb::before {
+      inset: 0;
+      border: 2px solid transparent;
+      border-top-color: var(--accent);
+      border-right-color: var(--accent2);
+      animation: spin 1s linear infinite;
+    }
+
+    .loading-orb::after {
+      inset: 8px;
+      border: 2px solid transparent;
+      border-bottom-color: var(--accent3);
+      animation: spin 0.7s linear infinite reverse;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading p {
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 300;
+    }
+
+    .loading strong {
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 6px;
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+    }
+
+    /* Result card */
+    .result-card {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      overflow: hidden;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(200,169,110,0.05), transparent);
+    }
+
+    .result-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem;
+      font-style: italic;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .result-title svg {
+      width: 18px;
+      height: 18px;
+      fill: var(--accent);
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+    }
+
+    .action-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.15); }
+
+    .action-btn.pdf {
+      background: linear-gradient(135deg, rgba(200,169,110,0.15), rgba(200,169,110,0.05));
+      border-color: rgba(200,169,110,0.3);
+      color: var(--accent);
+    }
+
+    .action-btn.pdf:hover {
+      background: linear-gradient(135deg, rgba(200,169,110,0.25), rgba(200,169,110,0.1));
+      box-shadow: 0 4px 16px rgba(200,169,110,0.2);
+    }
+
+    .result-body {
+      padding: 32px;
+    }
+
+    #summaryText {
+      font-size: 1.05rem;
+      line-height: 1.85;
+      color: var(--text);
+      font-weight: 300;
+    }
+
+    .result-footer {
+      padding: 16px 32px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .word-count {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .quality-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--accent3);
+      background: rgba(78,205,196,0.08);
+      border: 1px solid rgba(78,205,196,0.2);
+      border-radius: 100px;
+      padding: 4px 12px;
+    }
+
+    .quality-badge::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      background: var(--accent3);
+      border-radius: 50%;
+    }
+
+    /* Error */
+    .error-card {
+      display: none;
+      background: rgba(255,80,80,0.06);
+      border: 1px solid rgba(255,80,80,0.2);
+      border-radius: 16px;
+      padding: 20px 24px;
+      color: #ff8080;
+      font-size: 14px;
+      animation: fadeUp 0.4s ease both;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .card { padding: 24px; }
+      .result-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+      .btn-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+
+    <!-- Header -->
+    <header>
+      <h1>NotesMind</h1>
+      <p class="subtitle">Transform your lengthy notes into clear, concise summaries with the power of AI — then export as PDF.</p>
+    </header>
+
+    <!-- Input Card -->
+    <div class="card">
+      <div class="section-label">Your Notes</div>
+      <textarea id="inputText" placeholder="Paste your notes, articles, or any long text here... (minimum 50 characters)" oninput="updateCounter()"></textarea>
+      <div class="char-counter"><span id="charCount">0</span> characters</div>
+
+      <div class="btn-row">
+        <button class="btn-primary" id="summarizeBtn" onclick="summarize()">
+          ✦ Generate Summary
+        </button>
+        <button class="btn-secondary" onclick="clearAll()">Clear</button>
+      </div>
+
+      <div class="error-card" id="errorCard"></div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+      <div class="loading-orb"></div>
+      <strong>Analyzing your notes...</strong>
+      <p>The AI is reading and distilling key insights</p>
+    </div>
+
+    <!-- Result Card -->
+    <div class="result-card" id="resultCard">
+      <div class="result-header">
+        <div class="result-title">
+          <svg viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Summary
+        </div>
+        <div class="result-actions">
+          <button class="action-btn" onclick="copyText()">📋 Copy</button>
+          <button class="action-btn pdf" onclick="downloadPDF()">⬇ Export PDF</button>
+        </div>
+      </div>
+
+      <div class="result-body">
+        <p id="summaryText"></p>
+      </div>
+
+      <div class="result-footer">
+        <span class="word-count" id="wordCount"></span>
+        <span class="quality-badge">AI Generated</span>
+      </div>
+    </div>
+
+
+
+  </div>
+
+  <script>
+    function updateCounter() {
+      const len = document.getElementById('inputText').value.length;
+      document.getElementById('charCount').textContent = len;
+    }
+
+    function clearAll() {
+      document.getElementById('inputText').value = '';
+      document.getElementById('charCount').textContent = '0';
+      document.getElementById('resultCard').style.display = 'none';
+      document.getElementById('errorCard').style.display = 'none';
+    }
+
+    async function summarize() {
+      const text = document.getElementById('inputText').value;
+      const btn = document.getElementById('summarizeBtn');
+      const loading = document.getElementById('loading');
+      const resultCard = document.getElementById('resultCard');
+      const errorCard = document.getElementById('errorCard');
+
+      // Reset
+      resultCard.style.display = 'none';
+      errorCard.style.display = 'none';
+      loading.style.display = 'block';
+      btn.disabled = true;
+
+      try {
+        const response = await fetch('/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          document.getElementById('summaryText').textContent = data.summary;
+          const words = data.summary.split(' ').length;
+          document.getElementById('wordCount').textContent = `${words} words · ${data.summary.length} characters`;
+          resultCard.style.display = 'block';
+        } else {
+          errorCard.textContent = '⚠ ' + (data.error || 'Something went wrong. Please try again.');
+          errorCard.style.display = 'block';
+        }
+      } catch (err) {
+        errorCard.textContent = '⚠ Could not connect to the server. Make sure the app is running.';
+        errorCard.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        loading.style.display = 'none';
+      }
+    }
+
+    function copyText() {
+      const text = document.getElementById('summaryText').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => btn.textContent = '📋 Copy', 2000);
+      });
+    }
+
+    function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+      const summary = document.getElementById('summaryText').textContent;
+      const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // Background
+      doc.setFillColor(10, 10, 15);
+      doc.rect(0, 0, 210, 297, 'F');
+
+      // Gold header bar
+      doc.setFillColor(200, 169, 110);
+      doc.rect(0, 0, 210, 2, 'F');
+
+      // Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(28);
+      doc.setTextColor(200, 169, 110);
+      doc.text('NotesMind', 20, 30);
+
+      // Subtitle
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(120, 120, 130);
+      doc.text('AI-Generated Summary', 20, 40);
+
+      // Date
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 110);
+      doc.text(date, 190, 40, { align: 'right' });
+
+      // Divider line
+      doc.setDrawColor(200, 169, 110);
+      doc.setLineWidth(0.3);
+      doc.line(20, 48, 190, 48);
+
+      // Summary label
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(200, 169, 110);
+      doc.text('SUMMARY', 20, 60);
+
+      // Summary text
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      doc.setTextColor(240, 237, 232);
+      const lines = doc.splitTextToSize(summary, 170);
+      doc.text(lines, 20, 72);
+
+      // Footer
+      doc.setFontSize(9);
+      doc.setTextColor(80, 80, 90);
+      doc.text('Generated by NotesMind · AI Notes Summarizer', 105, 285, { align: 'center' });
+
+      // Bottom gold bar
+      doc.setFillColor(200, 169, 110);
+      doc.rect(0, 295, 210, 2, 'F');
+
+      doc.save('NotesMind-Summary.pdf');
+    }
+  </script>
+</body>
+</html>
